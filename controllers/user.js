@@ -3,24 +3,19 @@ const jwt = require("jsonwebtoken");
 const Boom = require('@hapi/boom');
 const { message } = require('../utils/message');
 const db = require('../database/config');
-const User = db.connect().users;
+const User = db.users;
 
 // Register user
 const register = async (req, res, next) => {
   try {
     const data = req.body;
 
-    const userExist = await User.findOne({
-      where: { email: data.email }
-    });
-
+    const userExist = await User.findOne({ where: { email: data.email } });
     if(userExist){
       return next(Boom.badRequest(message.RECORD_ALREADY_EXIST));
     }
 
-    if (data.password){
-      data.password = await bcrypt.hash(data.password, 10);
-    }
+    data.password = await bcrypt.hash(data.password, 10);
 
     // let image = '';
     // image = req.file ? req.file.filename : null;
@@ -28,7 +23,6 @@ const register = async (req, res, next) => {
     const user = await User.create(data);
     
     res.status(201).json({
-      statusCode: 201,
       message: 'User created successfully',
       data: user
     });
@@ -47,9 +41,7 @@ const login = async (req, res, next) => {
       return next(Boom.badRequest(message.EMAIL_PASSWORD_REQUIRED));
     }
 
-    const user = await User.findOne({
-      where: { email }
-    });
+    const user = await User.findOne({ where: { email } });
 
     if (!(user && (await bcrypt.compare(password, user.password)))) {
       return next(Boom.unauthorized(message.INVALID_CREDENTIALS));
@@ -57,45 +49,73 @@ const login = async (req, res, next) => {
 
     // Create jwt token
     const token = jwt.sign(
-      { userId: user.id, userEmail: user.email },
+      { userId: user.id, userEmail: user.email, userRole: user.role },
       process.env.JWT_SECRET_KEY,
       { expiresIn: "24h" }
     );
 
     res.status(200).json({
-      statusCode: 200,
       message: "User logged in successfully", 
       token: token
     });    
 
   } catch (err) {
-    return next(Boom.badData(err));
+    return next(Boom.badImplementation());
   }
 }
 
 // Get user profile
-const getProfileDetails = async (req, res, next) => {
+const getProfile = async (req, res, next) => {
   try {
     const id = req.user;
 
-    const userProfile = await User.findOne({
+    const user = await User.findOne({
       where: { id },
       attributes: {
         exclude: ['password', 'role']
       }
     });
 
-    if(!userProfile){
-      return next(Boom.notFound('User profile not found'));
+    if (!user){
+      return next(Boom.unauthorized('User does not logged in, please login'));
     }
 
     res.status(200).json({ 
-      statusCode: 200,
-      data: userProfile 
+      data: user 
     });
 
   } catch (err) {
-    return next(Boom.badData(err));
+    return next(Boom.badImplementation());
+  }
+}
+
+// Update user profile
+const updateProfile = async(req, res, next) => {
+  try {
+    const id = req.user;
+    const data = req.body;
+
+    const user = await User.findOne({ where: { id } });
+    if (!user){
+      return next(Boom.unauthorized('User does not logged in, please login'));
+    }
+
+    // // Update user image
+    // let image = user.image ;
+    // if(req.file){
+    //   image = (image == null) ? req.file.filename : deleteUserImage(user.image);
+    // }
+
+    await User.update(data, { 
+      where: { id } 
+    });
+
+    res.status(200).json({ 
+      message: 'User profile updated successfully'
+    });
+
+  } catch (err) {
+    return next(Boom.badImplementation());
   }
 }
 
@@ -109,161 +129,87 @@ const changePassword = async (req, res, next) => {
       return next(Boom.badRequest(message.OLD_NEW_CONF_PASSWORD_REQUIRED));
     }
     
-    const user = await User.findOne({
-      where : { id }
-    });
+    const user = await User.findOne({ where : { id } });
+    if (!user) {
+      return next(Boom.unauthorized('User does not logged in, please login'));
+    }
 
     // Compare the db password to the user input old password
     const result = await bcrypt.compare(oldPass, user.password);
     
     // Set new hash password
-    if(result){
-      if(!(newPass === conPass)){
-        return next(Boom.badData(message.NEW_CONF_PASSWORD_NOT_MATCH));
-      }
-
-      const hashPassword = await bcrypt.hash(newPass, 10);
-
-      await User.update({
-        password: hashPassword, 
-      }, { 
-        where: { id },
-      });
-
-      res.status(200).send({ 
-        statusCode: 200,
-        message: "Password changed successfully",
-      });
-
-    } else {
+    if(!result){
       return next(Boom.unauthorized(message.OLD_PASSWORD_NOT_MATCH));
     }
 
+    if (!(newPass === conPass)){
+      return next(Boom.badData(message.NEW_CONF_PASSWORD_NOT_MATCH));
+    }
+
+    const hashPassword = await bcrypt.hash(newPass, 10);
+
+    await User.update({
+      password: hashPassword, 
+    }, { 
+      where: { id },
+    });
+
+    res.status(200).json({ 
+      message: "Password changed successfully",
+    });
+
   } catch (err) {
-    return next(Boom.badData(err));
+    return next(Boom.badImplementation());
   }
 }
 
-// // Get all users
-// const getUsersDetails = async(req, res, next) => {
-//   try {
-//     // Find all books which is added by perticular user using foreign key (user => books)
-//     // const users = await User.findAll({
-//     //   include: {
-//     //     model: Book
-//     //   },
-//     //   where: { id: 2},
-//     //   attributes: {
-//     //     exclude: ['password']
-//     //   }
-//     // });
+// Delete user
+const deleteUserDetails = async(req, res, next) => {
+  try {
+    let id = req.params;
 
-//     const users = await User.findAll({
-//       attributes: {
-//         exclude: ['password']
-//       }
-//     });
+    const user = await User.findOne({ where: { id } });
+    if (!user){
+      return next(Boom.notFound(message.RECORD_NOT_FOUND));
+    } 
 
-//     if(!users.length){
-//       return next(Boom.notFound(message.RECORD_NOT_FOUND));
-//     }
+    // deleteUserImage(user.image);
 
-//     res.status(200).json({
-//       statusCode: 200,
-//       message: 'Users found successfully',
-//       data: users
-//     });
-//   } catch (error) {
-//     return next(Boom.badImplementation());
-//   }
-// }
+    await User.destroy({ where: { id } });
 
+    res.status(200).json({  
+      message: 'User details deleted successfully',
+    });
 
-// // Update user
-// const updateUserDetails = async(req, res, next) => {
-//   try {
-//     // Get user id
-//     const { id } = req.params;
+  } catch (err) {
+    return next(Boom.badImplementation());
+  }
+}
 
-//     // Get user input
-//     const { name, email, password, gender, interest } = req.body;
+// Get all users
+const getUsersList = async(req, res, next) => {
+  try {
+    const users = await User.findAll({
+      attributes: {
+        exclude: ['password']
+      }
+    });
 
-//     // Get detilas from database
-//     const user = await User.findOne({
-//       where: { id } 
-//     });
+    res.status(200).json({
+      data: users
+    });
 
-//     // check if user exist or not
-//     if(!user){
-//       deleteUserImage(user.image);
-//       return next(Boom.notFound(message.RECORD_NOT_FOUND));
-//     }
-
-//     // Update user image
-//     let image = user.image ;
-//     if(req.file){
-//       image = (image == null) ? req.file.filename : deleteUserImage(user.image);
-//     }
-
-//     // Encrypt user password
-//     const encryptedPassword = password ? await bcrypt.hash(password, 10) : user.password;
-
-//     // Update user in our database
-//     await User.update({
-//       id,
-//       name, 
-//       email: email ? email.toLowerCase() : user.email, 
-//       password: encryptedPassword, 
-//       gender, 
-//       interest,
-//       image,
-//       createdAt: user.createdAt,
-//       updatedAt: new Date()
-//     }, { 
-//       where: { id } 
-//     });
-
-//     res.status(200).send({ 
-//       statusCode: 200, 
-//       message: 'User updated successfully', 
-//       data: user,
-//     });
-
-//   } catch (error) {
-//     return next(Boom.badImplementation());
-//   }
-// }
-
-
-// // Delete user
-// const deleteUserDetails = async(req, res, next) => {
-//   try {
-//     let { id } = req.params;
-
-//     const user = await User.findOne({ where: { id } });
-//     if(!user){
-//       return res.status(404).send("User does not exist !");
-//     } 
-
-//     deleteUserImage(user.image);
-
-//     await User.destroy({ where: { id } });
-
-//     res.status(200).send({ 
-//       statusCode: 200, 
-//       message: 'User deleted successfully',
-//       data: user 
-//     });
-
-//   } catch (error) {
-//     return next(Boom.badImplementation());
-//   }
-// }
-
+  } catch (err) {
+    return next(Boom.badImplementation());
+  }
+}
 
 module.exports = {
   register,
   login,
-  getProfileDetails,
-  changePassword
+  getProfile,
+  updateProfile,
+  changePassword,
+  deleteUserDetails,
+  getUsersList
 };
