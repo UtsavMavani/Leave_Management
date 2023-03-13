@@ -15,9 +15,7 @@ const register = async (req, res, next) => {
       return next(Boom.badRequest(message.RECORD_ALREADY_EXIST));
     }
 
-    if (data.password){
-      data.password = await bcrypt.hash(data.password, 10);
-    }
+    data.password = await bcrypt.hash(data.password, 10);
 
     // let image = '';
     // image = req.file ? req.file.filename : null;
@@ -25,7 +23,6 @@ const register = async (req, res, next) => {
     const user = await User.create(data);
     
     res.status(201).json({
-      statusCode: 201,
       message: 'User created successfully',
       data: user
     });
@@ -52,19 +49,18 @@ const login = async (req, res, next) => {
 
     // Create jwt token
     const token = jwt.sign(
-      { userId: user.id, userEmail: user.email },
+      { userId: user.id, userEmail: user.email, userRole: user.role },
       process.env.JWT_SECRET_KEY,
       { expiresIn: "24h" }
     );
 
     res.status(200).json({
-      statusCode: 200,
       message: "User logged in successfully", 
       token: token
     });    
 
   } catch (err) {
-    return next(Boom.badData(err));
+    return next(Boom.badImplementation());
   }
 }
 
@@ -73,24 +69,23 @@ const getProfile = async (req, res, next) => {
   try {
     const id = req.user;
 
-    const userProfile = await User.findOne({
+    const user = await User.findOne({
       where: { id },
       attributes: {
         exclude: ['password', 'role']
       }
     });
 
-    if(!userProfile){
-      return next(Boom.notFound('User profile not found'));
+    if (!user){
+      return next(Boom.unauthorized('User does not logged in, please login'));
     }
 
     res.status(200).json({ 
-      statusCode: 200,
-      data: userProfile 
+      data: user 
     });
 
   } catch (err) {
-    return next(Boom.badData(err));
+    return next(Boom.badImplementation());
   }
 }
 
@@ -100,9 +95,9 @@ const updateProfile = async(req, res, next) => {
     const id = req.user;
     const data = req.body;
 
-    const userExist = await User.findOne({ where: { id } });
-    if(!userExist){
-      return next(Boom.notFound(message.RECORD_NOT_FOUND));
+    const user = await User.findOne({ where: { id } });
+    if (!user){
+      return next(Boom.unauthorized('User does not logged in, please login'));
     }
 
     // // Update user image
@@ -115,13 +110,12 @@ const updateProfile = async(req, res, next) => {
       where: { id } 
     });
 
-    res.status(200).send({ 
-      statusCode: 200, 
+    res.status(200).json({ 
       message: 'User profile updated successfully'
     });
 
   } catch (err) {
-    return next(Boom.badData(err));
+    return next(Boom.badImplementation());
   }
 }
 
@@ -135,8 +129,8 @@ const changePassword = async (req, res, next) => {
       return next(Boom.badRequest(message.OLD_NEW_CONF_PASSWORD_REQUIRED));
     }
     
-    const userExist = await User.findOne({ where : { id } });
-    if(!userExist) {
+    const user = await User.findOne({ where : { id } });
+    if (!user) {
       return next(Boom.unauthorized('User does not logged in, please login'));
     }
 
@@ -144,30 +138,28 @@ const changePassword = async (req, res, next) => {
     const result = await bcrypt.compare(oldPass, user.password);
     
     // Set new hash password
-    if(result){
-      if(!(newPass === conPass)){
-        return next(Boom.badData(message.NEW_CONF_PASSWORD_NOT_MATCH));
-      }
-
-      const hashPassword = await bcrypt.hash(newPass, 10);
-
-      await User.update({
-        password: hashPassword, 
-      }, { 
-        where: { id },
-      });
-
-      res.status(200).send({ 
-        statusCode: 200,
-        message: "Password changed successfully",
-      });
-
-    } else {
+    if(!result){
       return next(Boom.unauthorized(message.OLD_PASSWORD_NOT_MATCH));
     }
 
+    if (!(newPass === conPass)){
+      return next(Boom.badData(message.NEW_CONF_PASSWORD_NOT_MATCH));
+    }
+
+    const hashPassword = await bcrypt.hash(newPass, 10);
+
+    await User.update({
+      password: hashPassword, 
+    }, { 
+      where: { id },
+    });
+
+    res.status(200).json({ 
+      message: "Password changed successfully",
+    });
+
   } catch (err) {
-    return next(Boom.badData(err));
+    return next(Boom.badImplementation());
   }
 }
 
@@ -176,8 +168,8 @@ const deleteUserDetails = async(req, res, next) => {
   try {
     let id = req.params;
 
-    const userExist = await User.findOne({ where: { id } });
-    if(!userExist){
+    const user = await User.findOne({ where: { id } });
+    if (!user){
       return next(Boom.notFound(message.RECORD_NOT_FOUND));
     } 
 
@@ -185,13 +177,12 @@ const deleteUserDetails = async(req, res, next) => {
 
     await User.destroy({ where: { id } });
 
-    res.status(200).send({ 
-      statusCode: 200, 
+    res.status(200).json({  
       message: 'User details deleted successfully',
     });
 
   } catch (err) {
-    return next(Boom.badData(err));
+    return next(Boom.badImplementation());
   }
 }
 
@@ -203,18 +194,13 @@ const getUsersList = async(req, res, next) => {
         exclude: ['password']
       }
     });
-    
-    if(!users.length){
-      return next(Boom.notFound(message.RECORD_NOT_FOUND));
-    }
 
     res.status(200).json({
-      statusCode: 200,
       data: users
     });
 
   } catch (err) {
-    return next(Boom.badData(err));
+    return next(Boom.badImplementation());
   }
 }
 
