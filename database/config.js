@@ -24,7 +24,11 @@ db.sequelize = sequelize;
 db.users = require("../models/user")(sequelize, DataTypes);
 db.roles = require("../models/role")(sequelize, DataTypes);
 db.leaveRequests = require("../models/leaveRequest")(sequelize, DataTypes);
+db.userLeaves = require("../models/userLeave")(sequelize, DataTypes);
 
 db.roles.hasMany(db.users, { foreignKey: "role" });
+db.users.hasMany(db.leaveRequests, { foreignKey: "userId" });
+db.users.hasMany(db.leaveRequests, { foreignKey : "requestToId" });
+db.users.hasOne(db.userLeaves, { foreignKey: "userId" });
 
 module.exports = db;

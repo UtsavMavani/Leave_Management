@@ -4,6 +4,7 @@ const Boom = require('@hapi/boom');
 const { message } = require('../utils/message');
 const db = require('../database/config');
 const User = db.users;
+const UserLeave = db.userLeaves;
 
 // Register user
 const register = async (req, res, next) => {
@@ -21,10 +22,12 @@ const register = async (req, res, next) => {
     // image = req.file ? req.file.filename : null;
 
     const user = await User.create(data);
+
+    const userLeave = await UserLeave.create({ userId: user.id });
     
     res.status(201).json({
       message: 'User created successfully',
-      data: user
+      data: { user, userLeave }
     });
 
   } catch (err) {
@@ -163,7 +166,37 @@ const changePassword = async (req, res, next) => {
   }
 }
 
-// Delete user
+// Update user by id
+const updateUserDetails = async(req, res, next) => {
+  try {
+    const { id } = req.params;
+    const data = req.body;
+
+    const user = await User.findOne({ where: { id } });
+    if (!user){
+      return next(Boom.badRequest(message.RECORD_NOT_FOUND));
+    }
+
+    // // Update user image
+    // let image = user.image ;
+    // if(req.file){
+    //   image = (image == null) ? req.file.filename : deleteUserImage(user.image);
+    // }
+
+    await User.update(data, { 
+      where: { id } 
+    });
+
+    res.status(200).json({ 
+      message: 'User updated successfully'
+    });
+
+  } catch (err) {
+    return next(Boom.badImplementation());
+  }
+}
+
+// Delete user by id
 const deleteUserDetails = async(req, res, next) => {
   try {
     let id = req.params;
@@ -178,7 +211,7 @@ const deleteUserDetails = async(req, res, next) => {
     await User.destroy({ where: { id } });
 
     res.status(200).json({  
-      message: 'User details deleted successfully',
+      message: 'User deleted successfully',
     });
 
   } catch (err) {
@@ -210,6 +243,7 @@ module.exports = {
   getProfile,
   updateProfile,
   changePassword,
+  updateUserDetails,
   deleteUserDetails,
   getUsersList
 };
